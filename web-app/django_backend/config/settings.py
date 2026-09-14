@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 BASE_DIR=Path(__file__).resolve().parent.parent
-DEBUG=os.environ.get('DJANGO_DEBUG','1')=='1'
+DEBUG=os.environ.get('DJANGO_DEBUG','0' if os.environ.get('RENDER') else '1')=='1'
 SECRET_KEY=os.environ.get('DJANGO_SECRET_KEY','local-development-only-change-before-deploying')
 if not DEBUG and SECRET_KEY=='local-development-only-change-before-deploying':
     raise RuntimeError('Set DJANGO_SECRET_KEY for production')
@@ -27,3 +27,42 @@ SESSION_COOKIE_SAMESITE='Lax'
 SESSION_COOKIE_SECURE=not DEBUG
 CSRF_COOKIE_SECURE=not DEBUG
 DATA_UPLOAD_MAX_MEMORY_SIZE=20000
+
+
+# Healthify hosting settings
+import dj_database_url
+
+MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL:
+    DATABASES["default"] = dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=60,
+        conn_health_checks=True,
+    )
+elif not DEBUG:
+    raise RuntimeError("Set DATABASE_URL for production")
+
+ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS if host.strip()]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if hostname:
+    ALLOWED_HOSTS.append(hostname)
+    CSRF_TRUSTED_ORIGINS.append("https://" + hostname)
+
+if os.environ.get("RENDER"):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = not DEBUG
